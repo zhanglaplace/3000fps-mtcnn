@@ -1,8 +1,7 @@
 #include "lbf/lbf.hpp"
 #include "lbf/mtcnn.h"
 #include <cstdio>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
+#include <chrono>
 #include <opencv2/opencv.hpp>
 using namespace cv;
 using namespace std;
@@ -11,28 +10,43 @@ using namespace lbf;
 // dirty but works
 void parseTxt(string &txt, vector<Mat> &imgs, vector<Mat> &gt_shapes, vector<BBox> &bboxes);
 
-int runVideo(int key){
+/******************************************************
+// 函数名:runVideo
+// 说明:测试mtcnn+3000fps效果
+// 作者:张峰
+// 时间:2017.11.04
+// 备注:half表明加在mtcnn 加速的model
+/*******************************************************/
+int runVideo(char* key){
 	
 	VideoCapture capture(0);
     if(!capture.isOpened()){
         std::cout<<"open camera failed\n";
         return -1;
     }
-    Mat frame;
+
+	// 读取模型配置 ，加在模型
     Config &config = Config::GetInstance();
-    int N;
+	bool flag = false;
+	if (!strcmp(key, "half")){
+		flag = true;
+		config.saved_file_name = "../model/68_half.model";
+	}
     int landmark_n = config.landmark_n;
-    char img_path[256];
-    double bbox[4];
     vector<double> x(landmark_n), y(landmark_n);
     LbfCascador lbf_cascador;
     FILE *model = fopen(config.saved_file_name.c_str(), "rb");
     lbf_cascador.Read(model);
     fclose(model);
-    MTCNN det("../model");
-	float factor =0.709f;
+	
+	// mtcnn 加在模型
+	MTCNN det("../model", flag);
+	float factor = 0.709f, fps = 15;
 	float threshold[3]={0.7f,0.6f,0.6f};
-	int minSize = 40;
+	int minSize = 40, frame_count = 0;
+	Mat frame;
+	std::chrono::time_point<std::chrono::system_clock> p1, p0 = std::chrono::system_clock::now();//计算时间
+
     while(true){
         capture >>frame;
         if(frame.empty()){
@@ -54,6 +68,16 @@ int runVideo(int key){
             //BBox tmp(r.x,r.y,r.width,r.height);
             Mat shape = lbf_cascador.Predict(gray, tmp);
             frame = drawShapeInImage(frame,shape,tmp);
+			frame_count++;
+			if (frame_count % 10 == 0)
+			{
+				p1 = std::chrono::system_clock::now();
+				fps = 10.0 * 1000 / ((float)std::chrono::duration_cast<std::chrono::microseconds>(p1 - p0).count() / 1000);
+				p0 = p1;
+				frame_count = 0;
+			}
+			string fpsSt = "FPS:" + to_string(fps);
+			cv::putText(frame, fpsSt.c_str(), cv::Point(10, 20), CV_FONT_HERSHEY_SIMPLEX, 0.5, CV_RGB(255, 0, 0), 1, CV_AA);
             imshow("landmark",frame);
             if( 'q' == waitKey(1)){
                 return -1;
