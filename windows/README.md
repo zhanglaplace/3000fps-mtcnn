@@ -17,3 +17,7 @@
 	
 	run 3000fps-mtcnn video to test video result;
 	
+
+## Something Else
+   in order to accelerate the detect speed, you can decrease the bbox generator in pNet, Increase the threshold 
+is useful .
